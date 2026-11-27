@@ -80,10 +80,33 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Check GitHub Pages availability
+        id: pages_status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          status=$(curl --silent --show-error --output /tmp/pages.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$REPOSITORY/pages")
+          case "$status" in
+            200)
+              echo 'enabled=true' >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo 'enabled=false' >> "$GITHUB_OUTPUT"
+              echo '::warning::The homepage build and content checks passed, but GitHub Pages is not enabled. Initial enablement requires repository-admin access in Settings > Pages > Source > GitHub Actions. The verified site artifact has been uploaded; deployment is skipped.'
+              ;;
+            *)
+              echo "::error::Unable to check GitHub Pages availability (HTTP $status)."
+              exit 1
+              ;;
+          esac
       - name: Configure GitHub Pages
+        if: steps.pages_status.outputs.enabled == 'true'
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - name: Deploy to GitHub Pages
+        if: steps.pages_status.outputs.enabled == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
